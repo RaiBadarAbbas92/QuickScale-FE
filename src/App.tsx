@@ -13,8 +13,10 @@ interface Entry {
   amount: number;
   date: string;
   time: string;
+  secondDate?: string;
+  secondTime?: string;
 }
-
+ 
 interface PrintField {
   id: string;
   value: string;
@@ -39,10 +41,14 @@ const WeightStation: React.FC = () => {
   const [currentEntry, setCurrentEntry] = useState<Entry | null>(null);
   const [currentDate, setCurrentDate] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<string>('');
+  const [secondDate, setSecondDate] = useState<string>('');
+  const [secondTime, setSecondTime] = useState<string>('');
   const [searchSerial, setSearchSerial] = useState<string>('');
   const [searchResult, setSearchResult] = useState<Entry | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const componentRef = useRef<HTMLDivElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const printButtonRef = useRef<HTMLButtonElement>(null);
   const [printPositions, setPrintPositions] = useState<{[key: string]: {x: number, y: number}}>(
     JSON.parse(localStorage.getItem('printPositions') || '{}')
   );
@@ -78,8 +84,25 @@ const WeightStation: React.FC = () => {
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>, nextField: string) => {
     if (e.key === 'Enter') {
-      const nextElement = document.querySelector(`[name="${nextField}"]`) as HTMLElement;
-      if (nextElement) nextElement.focus();
+      if (nextField === 'save') {
+        saveButtonRef.current?.focus();
+      } else {
+        const nextElement = document.querySelector(`[name="${nextField}"]`) as HTMLElement;
+        if (nextElement) nextElement.focus();
+      }
+    }
+  };
+
+  const handleButtonKeyPress = (e: React.KeyboardEvent<HTMLButtonElement>, nextButtonClass: string) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      const nextButton = document.querySelector(`.${nextButtonClass}`) as HTMLElement;
+      if (nextButton) nextButton.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      const buttons = document.querySelectorAll('.btn');
+      const currentIndex = Array.from(buttons).findIndex(button => button === e.currentTarget);
+      if (currentIndex > 0) {
+        (buttons[currentIndex - 1] as HTMLElement).focus();
+      }
     }
   };
 
@@ -97,19 +120,22 @@ const WeightStation: React.FC = () => {
       `${wholePart}.${Math.round(decimalResult)}`;
     
     setWeightPer40(formattedWeight);
+
+    // Set second date and time when second weight is entered
+    const now = new Date();
+    setSecondDate(now.toLocaleDateString());
+    setSecondTime(now.toLocaleTimeString());
   };
 
   const handleSave = () => {
+    // Check if serial number already exists and not in edit mode
+    if (!isEditing && savedEntries.some(entry => entry.serialNumber === serialNumber)) {
+      setNotification('Serial number already exists. Please use a different serial number.');
+      return;
+    }
+
     if (!firstWeight || firstWeight === 0) {
       setNotification('Please enter first weight');
-      return;
-    }
-    if (!secondWeight || secondWeight === 0) {
-      setNotification('Please enter second weight');
-      return;
-    }
-    if (!driverName) {
-      setNotification('Please enter driver name');
       return;
     }
     if (!vehicleNumber) {
@@ -127,11 +153,13 @@ const WeightStation: React.FC = () => {
       vehicleNumber,
       firstWeight,
       secondWeight,
-      finalWeight,
-      weightPer40,
+      finalWeight: secondWeight ? Math.abs(firstWeight - secondWeight) : 0,
+      weightPer40: secondWeight ? weightPer40 : '0',
       amount,
       date: currentDate,
-      time: currentTime
+      time: currentTime,
+      secondDate: secondWeight ? secondDate : undefined,
+      secondTime: secondWeight ? secondTime : undefined
     };
 
     let updatedEntries;
@@ -141,8 +169,6 @@ const WeightStation: React.FC = () => {
       );
     } else {
       updatedEntries = [...savedEntries, entry];
-      const nextSerial = (parseInt(serialNumber) + 1).toString();
-      setSerialNumber(nextSerial);
     }
 
     setSavedEntries(updatedEntries);
@@ -150,6 +176,11 @@ const WeightStation: React.FC = () => {
     setCurrentEntry(entry);
     setNotification('Entry saved successfully');
     setIsEditing(false);
+
+    // Focus print button after successful save
+    if (printButtonRef.current) {
+      printButtonRef.current.focus();
+    }
   };
 
   const handleNew = () => {
@@ -164,6 +195,8 @@ const WeightStation: React.FC = () => {
     setCurrentEntry(null);
     setSearchResult(null);
     setIsEditing(false);
+    setSecondDate('');
+    setSecondTime('');
     
     const nextSerial = (parseInt(savedEntries[savedEntries.length - 1]?.serialNumber || '0') + 1).toString();
     setSerialNumber(nextSerial);
@@ -182,13 +215,15 @@ const WeightStation: React.FC = () => {
       { id: 'serial', value: currentEntry.serialNumber, position: {x: 50, y: 50} },
       { id: 'date', value: currentEntry.date, position: {x: 50, y: 100} },
       { id: 'time', value: currentEntry.time, position: {x: 50, y: 150} },
-      { id: 'vehicle', value: currentEntry.vehicleNumber, position: {x: 50, y: 200} },
-      { id: 'driver', value: currentEntry.driverName, position: {x: 50, y: 250} },
-      { id: 'amount', value: currentEntry.amount.toString(), position: {x: 50, y: 300} },
-      { id: 'firstWeight', value: `${currentEntry.firstWeight}`, position: {x: 50, y: 350}, isBold: true },
-      { id: 'secondWeight', value: `${currentEntry.secondWeight}`, position: {x: 50, y: 400}, isBold: true },
-      { id: 'finalWeight', value: `${currentEntry.finalWeight}`, position: {x: 50, y: 450}, isBold: true },
-      { id: 'weightPer40', value: `${currentEntry.weightPer40}`, position: {x: 50, y: 500}, isBold: true }
+      { id: 'secondDate', value: currentEntry.secondDate || '', position: {x: 50, y: 200} },
+      { id: 'secondTime', value: currentEntry.secondTime || '', position: {x: 50, y: 250} },
+      { id: 'vehicle', value: currentEntry.vehicleNumber, position: {x: 50, y: 300} },
+      { id: 'driver', value: currentEntry.driverName, position: {x: 50, y: 350} },
+      { id: 'amount', value: currentEntry.amount.toString(), position: {x: 50, y: 400} },
+      { id: 'firstWeight', value: `${currentEntry.firstWeight}`, position: {x: 50, y: 450}, isBold: true },
+      { id: 'secondWeight', value: `${currentEntry.secondWeight}`, position: {x: 50, y: 500}, isBold: true },
+      { id: 'finalWeight', value: `${currentEntry.finalWeight}`, position: {x: 50, y: 550}, isBold: true },
+      { id: 'weightPer40', value: `${currentEntry.weightPer40}`, position: {x: 50, y: 600}, isBold: true }
     ];
 
     const fields = defaultFields.map(field => ({
@@ -369,6 +404,8 @@ const WeightStation: React.FC = () => {
       setFinalWeight(foundEntry.finalWeight);
       setWeightPer40(foundEntry.weightPer40);
       setSerialNumber(foundEntry.serialNumber);
+      setSecondDate(foundEntry.secondDate || '');
+      setSecondTime(foundEntry.secondTime || '');
       setIsEditing(true);
     } else {
       setSearchResult(null);
@@ -380,52 +417,30 @@ const WeightStation: React.FC = () => {
     <div className="container">
       <div className="wrapper">
         <header className="header">
-          <div className="header-animation">
-            <div className="road">
-              <div className="road-lines"></div>
-              <div className="truck-container" style={{ animation: 'truckMove 8s linear infinite' }}>
-                <div className="truck" style={{ transform: 'scaleX(-1)', transition: 'transform 0.3s ease' }}>
-                  <FaTruck size={48} style={{ color: '#FF8C00' }} />
-                  <div className="truck-wheels" style={{ animation: 'wheelSpin 1s linear infinite' }}>
-                    <div className="wheel" style={{ animation: 'bounce 0.5s ease infinite' }}></div>
-                    <div className="wheel" style={{ animation: 'bounce 0.5s ease infinite 0.25s' }}></div>
-                  </div>
-                  <div className="truck-cargo" style={{ animation: 'sway 4s ease-in-out infinite' }}></div>
-                </div>
-                <div className="weight-station">
-                  <FaWeight size={32} />
-                  <div className="weight-platform">
-                    <div className="platform-light"></div>
-                  </div>
-                  <div className="weight-display">
-                    <span className="display-text">0000 KG</span>
-                  </div>
-                </div>
-              </div>
-              <div className="road-side">
-                <div className="tree"></div>
-                <div className="tree"></div>
-                <div className="building"></div>
-              </div>
-            </div>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
               <FaWeight size={32} />
               <h1>Rai Digital Computer Weight Station</h1>
             </div>
-            <p className="contact">Contact: +92-3016060072</p>
-          </div>
-          <div className="header-info">
-            <p className="serial">Serial: {serialNumber || 'Not Set'}</p>
-            <p className="date">Date: {currentDate}</p>
-            <p className="time">Time: {currentTime}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <p className="contact">Contact: +92-3016060072</p>
+            </div>
           </div>
         </header>
 
         <div className="main-content">
           <div className="content-grid" ref={componentRef}>
             <div className="input-section">
+              <div className="input-group">
+                <label>Serial Number:</label>
+                <input
+                  type="text"
+                  value={serialNumber}
+                  disabled
+                  style={{fontWeight: 'bold'}}
+                />
+              </div>
+
               <div className="input-group">
                 <label><FaTruck /> Vehicle Number:</label>
                 <input
@@ -460,35 +475,54 @@ const WeightStation: React.FC = () => {
                 />
               </div>
 
-              <div className="input-group">
-                <label><FaWeight /> First Weight:</label>
-                <div className="weight-input">
-                  <input
-                    type="number"
-                    name="firstWeight"
-                    value={firstWeight === 0 ? '' : firstWeight}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFirstWeight(Number(e.target.value))}
-                    onKeyPress={(e) => handleKeyPress(e, 'secondWeight')}
-                    onFocus={() => {if(firstWeight === 0) setFirstWeight(0)}}
-                  />
-                  <span>kg</span>
+              <div className="weight-input-container">
+                <div className="input-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '10px' }}>
+                    <div>
+                      <div>First Date: {currentDate}</div>
+                      <div>First Time: {currentTime}</div>
+                      {secondWeight > 0 && (
+                        <>
+                          <div>Second Date: {secondDate}</div>
+                          <div>Second Time: {secondTime}</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <label><FaWeight /> First Weight:</label>
+                  <div className="weight-input">
+                    <input
+                      type="number"
+                      name="firstWeight"
+                      value={firstWeight === 0 ? '' : firstWeight}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFirstWeight(Number(e.target.value))}
+                      onKeyPress={(e) => handleKeyPress(e, 'secondWeight')}
+                      onFocus={() => {if(firstWeight === 0) setFirstWeight(0)}}
+                      style={{fontWeight: 'bold', fontSize: '24px'}}
+                    />
+                    <span>kg</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="input-group">
-                <label><FaWeight /> Second Weight:</label>
-                <div className="weight-input">
-                  <input
-                    type="number"
-                    name="secondWeight"
-                    value={secondWeight === 0 ? '' : secondWeight}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setSecondWeight(Number(e.target.value));
-                      calculateFinalWeight(Number(e.target.value));
-                    }}
-                    onFocus={() => {if(secondWeight === 0) setSecondWeight(0)}}
-                  />
-                  <span>kg</span>
+              <div className="weight-input-container">
+                <div className="input-group">
+                  <label><FaWeight /> Second Weight:</label>
+                  <div className="weight-input">
+                    <input
+                      type="number"
+                      name="secondWeight"
+                      value={secondWeight === 0 ? '' : secondWeight}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setSecondWeight(Number(e.target.value));
+                        calculateFinalWeight(Number(e.target.value));
+                      }}
+                      onKeyPress={(e) => handleKeyPress(e, 'save')}
+                      onFocus={() => {if(secondWeight === 0) setSecondWeight(0)}}
+                      style={{fontWeight: 'bold', fontSize: '24px'}}
+                    />
+                    <span>kg</span>
+                  </div>
                 </div>
               </div>
 
@@ -500,6 +534,7 @@ const WeightStation: React.FC = () => {
                       type="number"
                       value={finalWeight}
                       disabled
+                      style={{fontWeight: 'bold', fontSize: '24px'}}
                     />
                     <span>kg</span>
                   </div>
@@ -512,6 +547,7 @@ const WeightStation: React.FC = () => {
                       type="text"
                       value={weightPer40}
                       disabled
+                      style={{fontWeight: 'bold', fontSize: '24px'}}
                     />
                     <span>kg</span>
                   </div>
@@ -539,9 +575,9 @@ const WeightStation: React.FC = () => {
                         <td>{searchResult.serialNumber}</td>
                         <td>{searchResult.date}</td>
                         <td>{searchResult.time}</td>
-                        <td>{searchResult.firstWeight}</td>
-                        <td>{searchResult.secondWeight}</td>
-                        <td>{searchResult.finalWeight}</td>
+                        <td style={{fontWeight: 'bold'}}>{searchResult.firstWeight}</td>
+                        <td style={{fontWeight: 'bold'}}>{searchResult.secondWeight}</td>
+                        <td style={{fontWeight: 'bold'}}>{searchResult.finalWeight}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -567,9 +603,9 @@ const WeightStation: React.FC = () => {
                             <td>{entry.serialNumber}</td>
                             <td>{entry.date}</td>
                             <td>{entry.time}</td>
-                            <td>{entry.firstWeight}</td>
-                            <td>{entry.secondWeight}</td>
-                            <td>{entry.finalWeight}</td>
+                            <td style={{fontWeight: 'bold'}}>{entry.firstWeight}</td>
+                            <td style={{fontWeight: 'bold'}}>{entry.secondWeight}</td>
+                            <td style={{fontWeight: 'bold'}}>{entry.finalWeight}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -581,13 +617,13 @@ const WeightStation: React.FC = () => {
           </div>
 
           <div className="button-grid">
-            <button onClick={handleNew} className="btn btn-blue"><FaPlus /> New</button>
-            <button className="btn btn-green"><FaList /> Saved List</button>
-            <button onClick={handleSave} className="btn btn-purple"><FaSave /> Save</button>
-            <button onClick={handlePrint} className="btn btn-indigo"><FaPrint /> Print</button>
-            <button className="btn btn-gray"><FaCalendarAlt /> List by Date</button>
-            <button className="btn btn-gray"><FaTruck /> Entry by Vehicle</button>
-            <button className="btn btn-gray"><FaUser /> Entry by Name</button>
+            <button onClick={handleNew} onKeyDown={(e) => handleButtonKeyPress(e, 'btn-green')} className="btn btn-blue"><FaPlus /> New</button>
+            <button className="btn btn-green" onKeyDown={(e) => handleButtonKeyPress(e, 'btn-purple')}><FaList /> Saved List</button>
+            <button ref={saveButtonRef} onClick={handleSave} onKeyDown={(e) => handleButtonKeyPress(e, 'btn-indigo')} className="btn btn-purple"><FaSave /> Save</button>
+            <button ref={printButtonRef} onClick={handlePrint} onKeyDown={(e) => handleButtonKeyPress(e, 'btn-gray')} className="btn btn-indigo"><FaPrint /> Print</button>
+            <button className="btn btn-gray" onKeyDown={(e) => handleButtonKeyPress(e, 'btn-gray')}><FaCalendarAlt /> List by Date</button>
+            <button className="btn btn-gray" onKeyDown={(e) => handleButtonKeyPress(e, 'btn-gray')}><FaTruck /> Entry by Vehicle</button>
+            <button className="btn btn-gray" onKeyDown={(e) => handleButtonKeyPress(e, 'btn-gray')}><FaUser /> Entry by Name</button>
             <div className="search-serial">
               <input
                 type="text"
@@ -595,7 +631,7 @@ const WeightStation: React.FC = () => {
                 value={searchSerial}
                 onChange={(e) => setSearchSerial(e.target.value)}
               />
-              <button onClick={handleSearchBySerial} className="btn btn-gray"><FaSearch /> Entry by Serial</button>
+              <button onClick={handleSearchBySerial} onKeyDown={(e) => handleButtonKeyPress(e, 'btn-gray')} className="btn btn-gray"><FaSearch /> Entry by Serial</button>
             </div>
           </div>
         </div>
